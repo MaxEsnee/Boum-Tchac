@@ -1,17 +1,18 @@
 // Variables
 var context, bufferLoader, source;
 var boum, tchac, clap;
-var isPlaying = false;      // Are we currently playing?
+var trackList = []; var trackId;
+var trackListContainer;
 var startTime;              // The start time of the entire sequence.
-var current16thNote;        // What note is currently last scheduled?
 var maxNotes = 8;
 var tempo = 120;            // Tempo (in beats per minute)
 var lookahead = 25.0;       // How frequently to call scheduling function (in milliseconds)
 var scheduleAheadTime = 0.1;// How far ahead to schedule audio (sec)
-var nextNoteTime = 0.0;     // When the next note is due.
-var intervalID = 0;         // setInterval identifier.
-var last16thNoteDrawn = -1; // the last "box" we drew on the screen
-var notesInQueue = [];      // the notes that have been put into the web audio, and may or may not have played yet. {note, time}
+// var currentNote;        // What note is currently last scheduled?
+// var nextNoteTime = 0.0;     // When the next note is due.
+// var intervalID = 0;         // setInterval identifier.
+// var lastNoteDrawn = -1; // the last "box" we drew on the screen
+// var notesInQueue = [];      // the notes that have been put into the web audio, and may or may not have played yet. {note, time}
 var canvas, canvasContext;
 
 // First, let's shim the requestAnimationFrame API, with a setTimeout fallback
@@ -31,21 +32,21 @@ window.onload = init;
 function init(){
 
     //Canvas
-    var container = document.createElement( 'div' );
-    container.className = "container";
-    canvas = document.createElement( 'canvas' );
-    canvasContext = canvas.getContext( '2d' );
-    canvas.width = window.innerWidth; 
-    canvas.height = window.innerHeight; 
-    document.body.appendChild( container );
-    container.appendChild(canvas);  
-    canvasContext.strokeStyle = "#ffffff";
-    canvasContext.lineWidth = 2;
-    window.onorientationchange = resetCanvas;
-    window.onresize = resetCanvas;
+    // var container = document.createElement( 'div' );
+    // container.className = "container";
+    // canvas = document.createElement( 'canvas' );
+    // canvasContext = canvas.getContext( '2d' );
+    // canvas.width = window.innerWidth; 
+    // canvas.height = window.innerHeight; 
+    // document.body.appendChild( container );
+    // container.appendChild(canvas);  
+    // canvasContext.strokeStyle = "#ffffff";
+    // canvasContext.lineWidth = 2;
+    // window.onorientationchange = resetCanvas;
+    // window.onresize = resetCanvas;
 
-    // Interface elements
-    var textarea = document.getElementById("textarea");
+    // DOM Elements
+    trackListContainer = document.getElementById("track-list-container");
 
     // Audio context
     window.AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -66,7 +67,9 @@ function init(){
     bufferLoader.load();
 
     //Start the drawing loop.
-    requestAnimFrame(draw); 
+    // requestAnimFrame(draw); 
+
+    newTrack();
 }
 
 function finishedLoading(bufferList) {
@@ -81,26 +84,97 @@ function finishedLoading(bufferList) {
   tchic.buffer = bufferList[3];
 }
 
-function nextNote() {
-    // Advance current note and time by a 8th note...
-    var secondsPerBeat = 60.0 / tempo;	// Notice this picks up the current tempo value to calculate beat length.
-    nextNoteTime += 0.5 * secondsPerBeat;	// Add beat length to last beat time
+function newTrack() {
+    trackId = trackList.length;
 
-    current16thNote++;	// Advance the beat number, wrap to zero
-    if (current16thNote == maxNotes) {
-        current16thNote = 0;
+    var track = {
+        id: trackId, 
+        isPlaying: false, 
+        currentNote: 0,     // What note is currently last scheduled?
+        nextNoteTime: 0.0,  // When the next note is due.
+        intervalId: 0,      // setInterval identifier.
+        lastNoteDrawn: -1,  // the last "box" we drew on the screen
+        notesInQueue: [],    // the notes that have been put into the web audio, and may or may not have played yet. {note, time}
+        maxNotes: 0
+    };
+
+    trackList.push(track);
+    createTrack(track);
+    // createVisualisation(trackID);
+}
+
+function createTrack(track) {
+    // Track Container
+    track.container = document.createElement('div');
+    track.container.id = "track-"+track.id+"-container";
+    // Textarea
+    track.input = document.createElement('textarea');
+    track.input.id = "track-"+track.id+"-input";
+    // Button Play
+    track.buttonPlay = document.createElement('button');
+    track.buttonPlay.id = "track-"+track.id+"-play";
+    track.buttonPlay.innerHTML = "Play";
+
+    // Adding the elements to the page
+    trackListContainer.appendChild(track.container);
+    track.container.appendChild(track.input);
+    track.container.appendChild(track.buttonPlay);
+
+    // Event Listener
+    track.buttonPlay.addEventListener("click", function() {
+        play(track);
+    })
+}
+
+
+
+function play(track) {
+    track.sheet = readTrack(track.input.value);
+    track.isPlaying = !track.isPlaying;
+
+    if (track.isPlaying) { // start playing
+        track.maxNotes = track.sheet.length;
+        track.currentNote = 0;
+        track.nextNoteTime = context.currentTime;
+        scheduler(track);    // kick off scheduling
+        return "stop";
+    } else {
+        window.clearTimeout(track.timerID);
+        return "play";
     }
 }
 
-function scheduleNote( beatNumber, time ) {
+function scheduler(track) {
+    // while there are notes that will need to play before the next interval, 
+    // schedule them and advance the pointer.
+    while (track.nextNoteTime < context.currentTime + scheduleAheadTime ) {
+        scheduleNote(track, track.currentNote, track.nextNoteTime);
+        nextNote(track);
+    }
+    track.timerID = window.setTimeout( function() {
+        scheduler(track);
+    }, lookahead );
+}
+
+function nextNote(track) {
+    // Advance current note and time by a 8th note...
+    var secondsPerBeat = 60.0 / tempo;	// Notice this picks up the current tempo value to calculate beat length.
+    track.nextNoteTime += 0.5 * secondsPerBeat;	// Add beat length to last beat time
+
+    track.currentNote++;	// Advance the beat number, wrap to zero
+    if (track.currentNote == track.maxNotes) {
+        track.currentNote = 0;
+    }
+}
+
+function scheduleNote(track, beatNumber, time) {
     // push the note on the queue, even if we're not playing.
-    notesInQueue.push( { note: beatNumber, time: time } );
+    track.notesInQueue.push({note: beatNumber, time: time});
 
-    if (beatNumber%1)
-        return; // we're not playing non-8th 16th notes
+    // if (beatNumber%1)
+    //     return; // we're not playing non-8th 16th notes
  
-
-    var note = track[beatNumber];
+    var note = track.sheet[beatNumber];
     if (note == "boum") {
         playSound(boum);
     }
@@ -115,33 +189,6 @@ function scheduleNote( beatNumber, time ) {
     }
 }
 
-function scheduler() {
-	// while there are notes that will need to play before the next interval, 
-	// schedule them and advance the pointer.
-	while (nextNoteTime < context.currentTime + scheduleAheadTime ) {
-		scheduleNote( current16thNote, nextNoteTime );
-		nextNote();
-	}
-	timerID = window.setTimeout( scheduler, lookahead );
-}
-
-function play() {
-	isPlaying = !isPlaying;
-
-    createTrack(textarea.value);
-
-	if (isPlaying) { // start playing
-        maxNotes = track.length;
-		current16thNote = 0;
-		nextNoteTime = context.currentTime;
-		scheduler();	// kick off scheduling
-		return "stop";
-	} else {
-		window.clearTimeout( timerID );
-		return "play";
-	}
-}
-
 function resetCanvas (e) {
     // resize the canvas - but remember - this clears the canvas too.
     canvas.width = window.innerWidth;
@@ -152,7 +199,7 @@ function resetCanvas (e) {
 }
 
 function draw() {
-    var currentNote = last16thNoteDrawn;
+    var currentNote = lastNoteDrawn;
     var currentTime = context.currentTime;
 
     while (notesInQueue.length && notesInQueue[0].time < currentTime) {
@@ -161,7 +208,7 @@ function draw() {
     }
 
     // We only need to draw if the note has moved.
-    if (last16thNoteDrawn != currentNote) {
+    if (lastNoteDrawn != currentNote) {
         var x = Math.floor( canvas.width / 18 );
         canvasContext.clearRect(0,0,canvas.width, canvas.height); 
         for (var i=0; i<maxNotes; i++) {
@@ -169,7 +216,7 @@ function draw() {
                 ((currentNote%4 == 0)?"red":"blue") : "black";
             canvasContext.fillRect( x * (i+1), x, x/2, x/2 );
         }
-        last16thNoteDrawn = currentNote;
+        lastNoteDrawn = currentNote;
     }
 
     // set up to draw again
@@ -184,15 +231,15 @@ function playSound(what) {
     source.start();
 }
 
-function createTrack(string) {
+function readTrack(string) {
 // "Boum, Tchac. Boum Tchac."
-track = string.replace(/\,/g, " pause");
-track = track.replace(/\./g, " pause pause");
-track = track.replace(/\;/g, " pause pause pause");
-track = track.replace(/boum/gi, "boum");
-track = track.replace(/tchac/gi, "tchac");
-track = track.replace(/clap/gi, "clap");
-track = track.replace(/tchic/gi, "tchic");
-track = track.split(" ");
-return track;
+trackSheet = string.replace(/\,/g, " pause");
+trackSheet = trackSheet.replace(/\./g, " pause pause");
+trackSheet = trackSheet.replace(/\;/g, " pause pause pause");
+trackSheet = trackSheet.replace(/boum/gi, "boum");
+trackSheet = trackSheet.replace(/tchac/gi, "tchac");
+trackSheet = trackSheet.replace(/clap/gi, "clap");
+trackSheet = trackSheet.replace(/tchic/gi, "tchic");
+trackSheet = trackSheet.split(" ");
+return trackSheet;
 }

@@ -8,11 +8,17 @@
     <script src="js/main.js"></script>
   </head>
   <body>
-    <div id="track-01">
-      <textarea id="track-01-input"></textarea>
-      <button if="track-01-play" onclick="play();">Play</button>
+    <div id="track-list-container">
+      
     </div>
+
+    <!-- <div id="track-01-container">
+      <textarea id="track-01-input"></textarea>
+      <button id="track-01-play" onclick="play();">Play</button>
+    </div> -->
+
       <div id="controls">
+        <button id="new-track" onclick="newTrack()">Add New Track</button>
         <p>Tempo :</p>
         <input id="tempo" 
         type="range" min="40.0" max="200.0" step="1" value="120" 
