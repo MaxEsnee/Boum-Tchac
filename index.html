@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width user-scalable=no">
+    <title>Boum, tchac !</title>
+    <script type="text/javascript" src="js/buffer-loader.js"></script>
+    <script src="js/main.js"></script>
+  </head>
+  <body>
+    <div id="track-01">
+      <textarea id="track-01-input"></textarea>
+      <button if="track-01-play" onclick="play();">Play</button>
+    </div>
+      <div id="controls">
+        <p>Tempo :</p>
+        <input id="tempo" 
+        type="range" min="40.0" max="200.0" step="1" value="120" 
+        style="height: 20px; width: 200px" 
+        oninput="tempo = this.value">
+      </div>
+   </body>
+</html>
