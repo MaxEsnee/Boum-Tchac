@@ -129,17 +129,39 @@ function createTrack(track) {
 
 
 function play(track) {
-    track.sheet = readTrack(track.input.value);
-    track.isPlaying = !track.isPlaying;
 
-    if (track.isPlaying) { // start playing
+    if (!track.isPlaying) { // If it is not playing
+         var startTime;
+        // Synchronise with other tracks
+        for (var i = 0; i < trackList.length; i++) {
+            if ((trackList[i].id != track.id)  && trackList[i].isPlaying) {
+                if (trackList[i].currentNote == 0) {
+                    var secondsPerBeat = 60.0 / tempo;
+                    startTime = trackList[i].nextNoteTime; //- (0.5 * secondsPerBeat);
+                    break;
+                }
+                else {
+                    track.timerID = window.setTimeout( function() {
+                        play(track);
+                    }, lookahead );
+                    return;
+                }
+            }
+        };
+
+        // Analyse user input
+        track.sheet = readTrack(track.input.value);
+ 
         track.maxNotes = track.sheet.length;
         track.currentNote = 0;
-        track.nextNoteTime = context.currentTime;
+        if (startTime) { track.nextNoteTime = startTime }
+        else { track.nextNoteTime = context.currentTime; }
         scheduler(track);    // kick off scheduling
+        track.isPlaying = true;
         return "stop";
     } else {
         window.clearTimeout(track.timerID);
+        track.isPlaying = false;
         return "play";
     }
 }
